@@ -1,0 +1,328 @@
+---
+title: "Cyclistic Q1 and Q2 Data"
+author: "Folorunso Oluseyi"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+# Introduction
+This analysis is aimed at uncovering trends and riding pattern of two class of riders in the use of the services of a fictional bike-ride share company, Cyclistic. Cyclistic is a bike-share company which launched in 2016 with a successful bike-share offering, which saw the company's fleet grow to 5,824 bicycles that are geotracked and locked into a network of 692 stations across Chicago. The bikes can be unlocked from one station and returned to any other station in the system anytime. 
+
+Until now, Cyclistic’s marketing strategy relied on building general awareness and appealing to broad consumer segments. One approach that helped make these things possible was the flexibility of its pricing plans: single-ride passes, full-day passes, and annual memberships. Customers who purchase single-ride or full-day passes are referred to as casual riders. Customers who purchase annual memberships are Cyclistic members.
+
+Cyclistic’s finance analysts have concluded that annual members are much more profitable than casual riders. Although the pricing flexibility helps Cyclistic attract more customers, head of Marketing, Lily Moreno believes that maximizing the number of annual members will be key to future growth. Rather than creating a marketing campaign that targets all-new customers, Moreno believes there is a very good chance to convert casual riders into members. She notes that casual riders are already aware of the Cyclistic program and have chosen Cyclistic for their mobility needs.
+
+Moreno has set a clear goal: Design marketing strategies aimed at converting casual riders into annual members. In order to do that, however, the marketing analyst team needs to better understand how annual members and casual riders differ, why casual riders would buy a membership, Moreno and her team are interested in analyzing the Cyclistic 2023 first and second quarter bike trip data to identify trends.
+
+As a data analyst in the marketing analyst team, my goal is to uncover these trends, and help the team understand how casual and annual members use Cyclistic bikes differently.
+
+
+The data is sourced from [<span style="color: blue">the divvy data</span>](https://divvy-tripdata.s3.amazonaws.com/index.html). Focus is in the first half of 2023, and the questions:
+* How do annual members and casual riders use Cyclistic bikes differently?
+* Why would casual riders buy Cyclistics annual membership?
+
+# Load the necessary libraries
+
+```{r load the libraries}
+library(tidyverse)
+library(lubridate)
+library(plotly)
+```
+# Upload the Divvy data
+All the divvy data for the first half of 2023 are loaded 
+
+```{r upload all divvy data}
+df_01 <- read.csv("C:/Users/HP/Documents/cylistic_data/202301-divvy-tripdata.csv")
+df_02 <- read.csv("C:/Users/HP/Documents/cylistic_data/202302-divvy-tripdata.csv")
+df_03 <- read.csv("C:/Users/HP/Documents/cylistic_data/202303-divvy-tripdata.csv")
+df_04 <- read.csv("C:/Users/HP/Documents/cylistic_data/202304-divvy-tripdata.csv")
+df_05 <- read.csv("C:/Users/HP/Documents/cylistic_data/202305-divvy-tripdata.csv")
+df_06 <- read.csv("C:/Users/HP/Documents/cylistic_data/202306-divvy-tripdata.csv")
+```
+# Data Wrangling
+The data is wranged and column names are compared to see if they all match
+```{r colum names comparison}
+colnames(df_01)
+colnames(df_02)
+colnames(df_03)
+colnames(df_04)
+colnames(df_05)
+colnames(df_06)
+```
+All column names match, so we proceed to combination of all data into a single file 
+
+# Inspect the data to check for incongruencies
+```{r}
+
+str(df_01)
+str(df_02)
+str(df_03)
+str(df_03)
+str(df_04)
+str(df_05)
+str(df_06)
+
+```
+
+
+
+# Data Collection and Combination into single file
+
+The data from the first half of 2023 have been collected and are combined into a single file. Note prior to combining data, the files have been previewed and matching 
+
+```{r combine data into single file}
+trip_data <- list.files("C:/Users/HP/Documents/cylistic_data", pattern="*.csv") %>% 
+  lapply(read_csv) %>% 
+  bind_rows
+```
+
+# Data cleaning
+
+Inspect the combined data frame 
+```{r data inspection}
+str(trip_data)
+nrow(trip_data)
+dim(trip_data)
+summary(trip_data)
+
+```
+
+The columns contains the rigt data type, particularly the **started_at** and*8ended_at** columns which are in date.time format. No null values can be found in the columns needed for analysis, named the **started_at**,**ended_at** and **member_casual** columns.
+
+The data contains the details of 2,390,459 trips made in the first 6 months of 2023. We hope to discover the difference in the ride patterns of annual members and casual riders.
+To further the analysis a column for ride length, day of the week, and month of the year are created.
+
+```{r add ride length, day_of_week, and mon columns}
+time <- seconds_to_period(trip_data$ended_at - trip_data$started_at)
+format <- sprintf('%2d:%2d:%2d', time@hour, minute(time), second(time))
+
+new_trip_data <- trip_data %>% mutate(ride_length = format, day_of_week = wday(started_at), 
+                                      day_of_week_abb = wday(started_at, label=TRUE), 
+                                      mon = month(started_at, label=TRUE)) 
+
+head(new_trip_data)
+```
+A look into the new data frame reveals that **ride_length** is in character data type
+
+```{r explore new data frame}
+str(new_trip_data)
+```
+convert **ride_length** to numeric data type
+```{r convert ride_length to numeric data}
+
+
+new_trip_data$ride_length <- as.numeric(seconds(hms(new_trip_data$ride_length)))
+
+```
+
+Before proceeding with analysis, rows with negative ride_length are eliminated. 
+```{r eliminate rows with negative ride_length values}
+
+new_trip_data_v2 <- new_trip_data[!(new_trip_data$ride_length < 0), ]
+str(new_trip_data_v2)
+
+```
+With the elimination of rows with negative ride length values, the data is reduced to 2,390,437 rows
+
+# Descrptive analysis
+
+With the data cleaned, descriptive analysis begins.
+
+```{r descriptive analysis}
+
+summary(new_trip_data_v2$ride_length)
+
+```
+
+Descriptive Analysis reveals that a total of **2,390,437** rides were occurred within the first half of 2023
+The longest ride lasted: **86,343 seconds (23:59:03)**
+The shortest ride lasted 0 second
+The average ride lasted 897.6 seconds **(0:14:57.6)**
+## Ride Length by rider type
+
+```{r}
+
+new_trip_data_v2 %>%  aggregate(ride_length ~ member_casual, FUN = summary)
+
+new_trip_data_v2 %>%  group_by(member_casual) %>% count()
+
+```
+
+A total of **827,913 rides** were carried out by casual users, while member users had **1,562,524 rides** in the first 6 months of 2023
+**Casual riders** spent an average of **1,264.8612 seconds (0:21:4.8612)** riding in the first half of 2023.
+And a minimum of 0 second, and the maximum time spent riding  **86,343 seconds riding (23:59:03)**.
+**Member riders** rode for an average of **703.0215 seconds (0:11:43.0215)** riding Cyclistic bikes, and a minimum of 0 second, and **85,998 seconds (23:53:18)**.
+
+Despite having more rides than casual riders, member riders account for less average ride length and maximum ride length. 
+This hints at the fact that **casual riders do not make use of Cyclistic service often, but when they do, they ride for longer duration**.
+
+
+Investigate further into the ride pattern of casual and member riders.
+
+A graphical visualization of the number of rides and average duration of rides by members and casual riders gives further insight into the difference between the two users.
+
+A data frame consisting of columns calculation the total rides and average ride duration of both rider users by day of the week.
+```{r num of rides and average ride duration columns}
+ride_summary<- new_trip_data_v2 %>% group_by(member_casual, day_of_week_abb) %>% summarise(number_of_rides = n(), 
+                                                                            average_duration = mean(ride_length))
+
+
+```
+
+## Total and Average ride duration by day of the week 
+
+```{r total number of rides and average duration}
+
+
+ggplotly(ggplot(data = ride_summary) +
+  geom_col(mapping = aes(x = day_of_week_abb, y = average_duration, fill = member_casual), position = "dodge") +
+  labs(title = "Bar Plot of Average Riders by Day of the Week",
+       x = "Day of the Week",
+       y = "Average Ride Duration in Secs"))
+
+
+
+ggplotly(ggplot(data = ride_summary) +
+           geom_col(mapping = aes(x = day_of_week_abb, y = number_of_rides, fill = member_casual), position = "dodge") +
+           labs(title = "Bar Plot of Total Number of Rides by Day of the Week",
+                x = "Day of the Week",
+                y = "Total number of Rides"))
+
+
+```
+
+The visualizations gives insight into the riding pattern of casual and member riders on each day of the week.
+**Casual riders spend more time riding during the weekend (Friday to Sunday) and mostly ride on those days.**
+**Member riders rides peak during the week, with average ride duration remaining uniformly close during those days.**
+
+These thus presents these deductions:
+* Member riders mostly make use of bike during weekdays preferably to commute to work
+* Average ride duration among member riders is stable during week days, but peaks during weekends.
+* Casual users spend more time riding during week ends.
+* Casual riders mostly ride during weekends 
+* Casual riders spend longer time riding than member riders.
+
+
+With these deductions made on cyclistic users based on days on the week, we progress further to analyze ride users by months of the first half of the year
+.
+
+## Total and Average duration of rides by months
+
+```{r total and average ride durations by months}
+ride_sum_months <- new_trip_data_v2 %>% group_by(member_casual, mon) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_length))
+
+ride_sum_months
+```
+
+The visualizations give details into the trends of ride users by ride pattern during the first 6 months of 2023
+```{r }
+
+ggplotly(ggplot(data = ride_sum_months, aes(x = mon, y = number_of_rides, group = member_casual, color = member_casual)) +
+  geom_line(size = 0.5) +
+  geom_point()+                  
+  labs(title = "Line Graph of Total Number of Rides by Day of the Week",
+       x = "Months",
+       y = "Total number of Rides"))
+
+
+ggplotly(ggplot(data = ride_sum_months, aes(x = mon, y = average_duration, group = member_casual, color = member_casual)) +
+           geom_line(size = 0.5) +
+           geom_point()+                  
+           labs(title = "Line Graph of Total Number of Rides by Day of the Week",
+                x = "Months",
+                y = "Total number of Rides"))
+
+```
+
+Visualization of total number of rides and average ride duration of members and casual rides reveal similar trends. 
+An upward trend in the number of rides by member and casual riders is noticed from the start of the year up to the end of the first quarter of 2023.
+Average ride duration of both riders follow the same pattern of increase from the start of the year, but a slight decrease is observed between February and March (the decrease in average ride duration is much more steep for casual riders), but increase up to the end of the first half of the year.
+
+Monthly analysis of the data shows no major difference in the use of cyclistic service by member and casual riders.
+
+
+The above analysis thus gives us core basis to make the following deductions:
+* Member riders ride often but spend less time riding.
+* Member riders ride mostly during weekdays, and most likely make use of Cyclistic bikes to commute to work and their homes. (This assumption is confirmed below)
+(Total number of riders among member riders peak during week days, thus we visualize the hour most member riders start bike trip on select days of the week and upon further confirmation by an overview of the ride visualization on all week days, a pattern is noticed on ride peaking at specific times on weekdays.)
+```{r member ride viz on tuesday and wednesdays}
+
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter(day_of_week_abb == "Tue", member_casual == "member") %>% 
+  mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour)) +
+  geom_bar(fill = "deepskyblue1") +
+  labs(title = "No. of Rides Started at Diff. Hour by Member Riders on Tuesdays",
+       x = "Hour",
+       y = "Number of Rides"))
+
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter(day_of_week_abb == "Wed", member_casual == "member") %>% 
+           mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour)) +
+           geom_bar(fill = "deepskyblue1") +
+           labs(title = "No. of Rides Started at Diff. Hour by Member Riders on Wednesdays",
+                x = "Hour",
+                y = "Number of Rides"))
+
+
+```
+
+Tuesdays and Wednesdays rides among member riders peak between 8:00 and 9:00 hours and also 16:00 - 18:00 hours, which is typically when workers resume and end the day. An increase in ride duration toward evening and late nights can be credited to increased activities towards the end of the day. An overview of the data among member data shows similar trend among weekdays, thus confirming the assumption.
+
+```{r member ride overview based on days of the week}
+
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter( member_casual == "member") %>% 
+  mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour))+
+  geom_bar(fill ="deepskyblue1") +
+  facet_grid(~day_of_week_abb) +
+  labs(title = "No. of Rides Started at Diff. Hours By Members on All Weekdays",
+       x = "Hour",
+       y = "Number of Rides"))
+```
+The same pattern is noticed in casual riderers on weekday, but this points to fact that some casual riders make use of Cyclistic to commute to work. 
+
+```{r casual ride viz based on days of the week}
+ 
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter(day_of_week_abb == "Tue", member_casual == "casual") %>% 
+             mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour))+
+  geom_bar(fill = "indianred2") +
+  labs(title = "No. of Rides Started at Diff Hours by Casuals Riders on Tuesdays",
+     x = "Hour",
+     y = "Number of Rides"))
+
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter(day_of_week_abb == "Wed", member_casual == "casual") %>% 
+  mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour))+
+  geom_bar(fill = "indianred2") +
+  labs(title = "No. of Rides Started at Diff Hours by Casuals Riders on Tuesdays",
+         x = "Hour",
+         y = "Number of Rides"))
+```
+
+
+
+The overview data which reveals more riding activites on weekends, show that most casual riders use Cyclistic on weekend.
+```{r casual ride overview viz based on days of the week}
+ggplotly(new_trip_data_v2 %>% group_by(day_of_week_abb) %>% filter( member_casual == "casual") %>% 
+           mutate(hour = hour(started_at)) %>% ggplot(aes(x = hour))+
+           geom_bar(fill = "indianred2") +
+           facet_grid(~day_of_week_abb) +
+           labs(title = "No. of Rides Started at Diff. Hours By Casual Riders on All Weekdays",
+                x = "Hour",
+                y = "Number of Rides")) 
+
+```
+
+* Casual riders ride less frequently, but when they ride, they ride for longer hours.
+* Casual riders ride mostly on weekends.
+
+# Conclusion
+### Upon detailed and in-depth analysis of Cyclistic first quarter of 2023 data, the question can be answered
+
+How do annual members and casual riders use Cyclistic bikes differently?
+Member riders ride Cyclistic bikes mostly on week days most likely to work, while casual riders ride    Cyclistic bikes mostly on weekends. Also, member riders ride frequently and on average spend less time riding, but casual riders ride less frequently compared to members riders, but when they do they ride for long duration.
+
+### Why would casual riders buy Cyclistics annual membership?
+
+For most casual users, annual membership would be bought if an annual membership offering that caters for longer ride duration preferably on weekend is rolled out. A small segment of casual riders use Cyclistic for the same reasons as member riders, thus ramping up ads for annual membership for these class of riders would lead to their conversion to members.
+
+
+
